@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Clima Concepción</title>
+<meta name="description" content="Pronóstico del tiempo de 7 días y mapa de viento, lluvia y tormentas para Concepción, Chile." />
+
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0b1f33" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Clima Conce" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" href="icon-192.png" />
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?external=react"
+  }
+}
+</script>
+
+<style>
+  html, body { margin: 0; padding: 0; background: #05101c; height: 100%; overscroll-behavior: none; }
+  #root { min-height: 100vh; }
+  #boot-loader {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #05101c; color: #a9c6d9; font-family: -apple-system, sans-serif; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div id="root"><div id="boot-loader">Cargando Clima Concepción…</div></div>
+
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Wind, CloudRain, CloudFog, CloudSun, Sun, CloudLightning,
+  Droplets, Sunrise, Settings2, Wifi,
+  BatteryFull, Search, Compass, TriangleAlert, ChevronRight,
+  Thermometer, Waves, RefreshCw,
+} from "lucide-react";
+
+/* ---------------------------------------------------------------
+   Concepción, Región del Biobío, Chile
+----------------------------------------------------------------*/
+const LAT = -36.8265;
+const LON = -73.0503;
+const API_URL =
+  `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+  `&timezone=America%2FSantiago&forecast_days=7` +
+  `&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,precipitation` +
+  `&hourly=temperature_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m` +
+  `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,` +
+  `wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,uv_index_max,sunrise,sunset`;
+
+const FALLBACK_DAYS = [
+  { label: "Hoy", date: "1 jul", tMax: 12, tMin: 2, precip: 5, windMax: 61, windDeg: 90, cond: "Niebla matinal, nubes y claros", code: 45, uv: 2, hum: 88, sunrise: "08:05", sunset: "17:46" },
+  { label: "Mañana", date: "2 jul", tMax: 13, tMin: 1, precip: 10, windMax: 27, windDeg: 225, cond: "Nubes y claros", code: 2, uv: 2, hum: 76, sunrise: "08:05", sunset: "17:47" },
+  { label: "Viernes", date: "3 jul", tMax: 13, tMin: -1, precip: 5, windMax: 22, windDeg: 180, cond: "Despejado, helada matinal", code: 0, uv: 3, hum: 68, sunrise: "08:05", sunset: "17:47" },
+  { label: "Sábado", date: "4 jul", tMax: 10, tMin: 2, precip: 90, windMax: 28, windDeg: 225, cond: "Lluvia", code: 63, uv: 1, hum: 92, sunrise: "08:05", sunset: "17:48" },
+  { label: "Domingo", date: "5 jul", tMax: 13, tMin: 2, precip: 15, windMax: 21, windDeg: 180, cond: "Nubes y claros", code: 2, uv: 2, hum: 74, sunrise: "08:04", sunset: "17:49" },
+  { label: "Lunes", date: "6 jul", tMax: 12, tMin: 1, precip: 10, windMax: 23, windDeg: 135, cond: "Nubes y claros", code: 2, uv: 2, hum: 78, sunrise: "08:04", sunset: "17:50" },
+  { label: "Martes", date: "7 jul", tMax: 12, tMin: 5, precip: 80, windMax: 46, windDeg: 315, cond: "Sistema frontal, lluvia intensa", code: 65, uv: 1, hum: 94, sunrise: "08:03", sunset: "17:51" },
+];
+
+const LAYERS = [
+  { id: "viento", label: "Viento", Icon: Wind },
+  { id: "lluvia", label: "Lluvia", Icon: CloudRain },
+  { id: "tormentas", label: "Tormentas", Icon: CloudLightning },
+  { id: "temperatura", label: "Temperatura", Icon: Thermometer },
+];
+
+const LAND_PTS = [
+  [0.44, 0.0], [0.52, 0.06], [0.47, 0.13], [0.33, 0.15], [0.30, 0.19],
+  [0.40, 0.23], [0.37, 0.30], [0.33, 0.36], [0.41, 0.40], [0.38, 0.49],
+  [0.44, 0.56], [0.41, 0.63], [0.50, 0.70], [0.47, 0.80], [0.55, 0.88],
+  [0.51, 1.0], [1.0, 1.0], [1.0, 0.0],
+];
+const ISLAND = { cx: 0.255, cy: 0.10, rx: 0.028, ry: 0.045, rot: -0.5 };
+const STORM_ORIGIN = { x: 0.17, y: 0.44 };
+const CITY_PT = { x: 0.585, y: 0.535, label: "Concepción" };
+const TALCA_PT = { x: 0.35, y: 0.165, label: "Talcahuano" };
+const RIVER_LABEL_PT = { x: 0.40, y: 0.60, label: "Río Biobío" };
+
+function windColor(speed) {
+  if (speed < 15) return "56,163,214";
+  if (speed < 30) return "76,201,196";
+  if (speed < 45) return "255,178,74";
+  return "255,92,92";
+}
+
+function degToCompass(deg) {
+  const dirs = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+}
+
+function codeToIcon(code) {
+  if (code === 0) return { Icon: Sun, label: "Despejado" };
+  if (code === 1 || code === 2) return { Icon: CloudSun, label: "Parcialmente nublado" };
+  if (code === 3) return { Icon: CloudSun, label: "Nublado" };
+  if (code === 45 || code === 48) return { Icon: CloudFog, label: "Niebla" };
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return { Icon: CloudRain, label: "Lluvia" };
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return { Icon: CloudRain, label: "Precipitación" };
+  if ([95, 96, 99].includes(code)) return { Icon: CloudLightning, label: "Tormenta eléctrica" };
+  return { Icon: CloudSun, label: "Variable" };
+}
+
+const fmtHM = (iso) => {
+  if (!iso) return "--:--";
+  try { return iso.slice(11, 16); } catch { return "--:--"; }
+};
+
+const WEEKDAY_LONG = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function App() {
+  const [selected, setSelected] = useState(0);
+  const [layer, setLayer] = useState("viento");
+  const [hour, setHour] = useState(new Date().getHours());
+  const [clock, setClock] = useState("");
+  const [forecast, setForecast] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [updatedAt, setUpdatedAt] = useState(null);
+
+  const canvasRef = useRef(null);
+  const wrapRef = useRef(null);
+  const particlesRef = useRef([]);
+  const rafRef = useRef(null);
+
+  const reducedMotion = typeof window !== "undefined" &&
+    window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  useEffect(() => {
+    const tick = () => {
+      const d = new Date();
+      setClock(d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }));
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const loadForecast = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const res = await fetch(API_URL);
+      if (!res.ok) throw new Error("respuesta no válida");
+      const data = await res.json();
+      setForecast(data);
+      setStatus("ok");
+      setUpdatedAt(new Date());
+    } catch (e) {
+      setStatus("error");
+    }
+  }, []);
+
+  useEffect(() => { loadForecast(); }, [loadForecast]);
+
+  const days = useMemo(() => {
+    if (status === "ok" && forecast?.daily) {
+      const d = forecast.daily;
+      return d.time.map((iso, i) => {
+        const date = new Date(iso + "T12:00:00");
+        const weekday = WEEKDAY_LONG[date.getDay()];
+        return {
+          label: i === 0 ? "Hoy" : i === 1 ? "Mañana" : cap(weekday),
+          date: date.toLocaleDateString("es-CL", { day: "numeric", month: "short" }),
+          tMax: Math.round(d.temperature_2m_max[i]),
+          tMin: Math.round(d.temperature_2m_min[i]),
+          precip: Math.round(d.precipitation_probability_max?.[i] ?? 0),
+          precipMm: d.precipitation_sum?.[i] ?? 0,
+          windMax: Math.round(d.wind_speed_10m_max?.[i] ?? 0),
+          gust: Math.round(d.wind_gusts_10m_max?.[i] ?? 0),
+          windDeg: d.wind_direction_10m_dominant?.[i] ?? 180,
+          code: d.weather_code[i],
+          cond: codeToIcon(d.weather_code[i]).label,
+          uv: Math.round(d.uv_index_max?.[i] ?? 0),
+          sunrise: fmtHM(d.sunrise?.[i]),
+          sunset: fmtHM(d.sunset?.[i]),
+        };
+      });
+    }
+    return FALLBACK_DAYS;
+  }, [forecast, status]);
+
+  const day = days[selected];
+  const { Icon: DayIcon } = codeToIcon(day.code);
+
+  const hourly = useMemo(() => {
+    if (status === "ok" && forecast?.hourly) {
+      const idx = selected * 24 + hour;
+      const h = forecast.hourly;
+      if (h.time[idx]) {
+        return {
+          temp: Math.round(h.temperature_2m[idx]),
+          precipProb: h.precipitation_probability[idx],
+          precipMm: h.precipitation[idx],
+          wind: Math.round(h.wind_speed_10m[idx]),
+          windDeg: h.wind_direction_10m[idx],
+        };
+      }
+    }
+    return { temp: day.tMax, precipProb: day.precip, precipMm: day.precipMm, wind: day.windMax, windDeg: day.windDeg };
+  }, [forecast, status, selected, hour, day]);
+
+  const heroTemp = selected === 0 && status === "ok" && forecast?.current
+    ? Math.round(forecast.current.temperature_2m)
+    : day.tMax;
+  const heroHum = selected === 0 && status === "ok" && forecast?.current
+    ? Math.round(forecast.current.relative_humidity_2m)
+    : day.hum ?? 75;
+
+  const initParticles = useCallback((w, h, n) => {
+    const arr = [];
+    for (let i = 0; i < n; i++) {
+      arr.push({ x: Math.random() * w, y: Math.random() * h, life: Math.random() * 120, speed: 0.55 + Math.random() * 1.1 });
+    }
+    particlesRef.current = arr;
+  }, []);
+
+  const isSea = (fx, fy) => {
+    let inside = false;
+    const pts = LAND_PTS;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i][0], yi = pts[i][1];
+      const xj = pts[j][0], yj = pts[j][1];
+      const intersect = yi > fy !== yj > fy && fx < ((xj - xi) * (fy - yi)) / (yj - yi) + xi;
+      if (intersect) inside = !inside;
+    }
+    return !inside;
+  };
+
+  const drawLand = (ctx, w, h) => {
+    ctx.beginPath();
+    LAND_PTS.forEach(([px, py], i) => {
+      const x = px * w, y = py * h;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, "#1c3346");
+    g.addColorStop(1, "#0f2033");
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(169,198,217,0.35)";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(ISLAND.cx * w, ISLAND.cy * h);
+    ctx.rotate(ISLAND.rot);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, ISLAND.rx * w, ISLAND.ry * h, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#1c3346";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(169,198,217,0.35)";
+    ctx.stroke();
+    ctx.restore();
+
+    const dot = (p, label) => {
+      const x = p.x * w, y = p.y * h;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#eaf2f6";
+      ctx.fill();
+      ctx.font = "500 11px monospace";
+      ctx.fillStyle = "rgba(234,242,246,0.85)";
+      ctx.textAlign = "left";
+      ctx.fillText(label, x + 8, y + 4);
+    };
+    dot(CITY_PT, CITY_PT.label);
+    dot(TALCA_PT, TALCA_PT.label);
+    ctx.font = "italic 10px monospace";
+    ctx.fillStyle = "rgba(234,242,246,0.55)";
+    ctx.textAlign = "left";
+    ctx.fillText(RIVER_LABEL_PT.label, RIVER_LABEL_PT.x * w, RIVER_LABEL_PT.y * h);
+  };
+
+  const drawStormCell = (ctx, w, h, t) => {
+    const x = STORM_ORIGIN.x * w, y = STORM_ORIGIN.y * h;
+    for (let i = 0; i < 3; i++) {
+      const r = 14 + ((t * 0.05 + i * 26) % 70);
+      const alpha = Math.max(0, 1 - r / 90);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,92,92,${alpha * 0.55})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#ff5c5c";
+    ctx.fill();
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const wrap = wrapRef.current;
+    if (!canvas || !wrap) return;
+    const ctx = canvas.getContext("2d");
+    let dpr;
+
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#0a1b2e";
+      ctx.fillRect(0, 0, w, h);
+      initParticles(w, h, 190);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const towardDeg = (hourly.windDeg + 180) % 360;
+    const baseAngle = ((towardDeg - 90) * Math.PI) / 180;
+    const speedFactor = Math.min(hourly.wind / 55, 1.4);
+
+    let t = 0;
+    const frame = () => {
+      t += 1;
+      const w2 = wrap.clientWidth, h2 = wrap.clientHeight;
+
+      ctx.fillStyle = "rgba(8,20,34,0.14)";
+      ctx.fillRect(0, 0, w2, h2);
+
+      const seaG = ctx.createLinearGradient(0, 0, w2, h2);
+      seaG.addColorStop(0, "rgba(20,50,76,0.25)");
+      seaG.addColorStop(1, "rgba(9,24,40,0.10)");
+      ctx.fillStyle = seaG;
+      ctx.fillRect(0, 0, w2, h2);
+
+      if (layer === "temperatura") {
+        const tg = ctx.createLinearGradient(0, 0, w2, 0);
+        tg.addColorStop(0, "rgba(76,201,196,0.35)");
+        tg.addColorStop(0.5, "rgba(255,178,74,0.22)");
+        tg.addColorStop(1, "rgba(255,92,92,0.18)");
+        ctx.fillStyle = tg;
+        ctx.fillRect(0, 0, w2, h2);
+        ctx.strokeStyle = "rgba(234,242,246,0.18)";
+        for (let i = 1; i < 6; i++) {
+          ctx.beginPath();
+          ctx.moveTo((i / 6) * w2, 0);
+          ctx.lineTo((i / 6) * w2, h2);
+          ctx.stroke();
+        }
+      }
+
+      drawLand(ctx, w2, h2);
+
+      if (layer === "viento" || layer === "tormentas") {
+        const parts = particlesRef.current;
+        const dim = layer === "tormentas" ? 0.55 : 1;
+        for (const p of parts) {
+          const fy = p.y / h2;
+          const curl = Math.sin(fy * 6 + t * 0.01) * 0.35;
+          const a = baseAngle + curl;
+          const sp = p.speed * (1.4 + speedFactor * 2.2);
+          const nx = p.x + Math.cos(a) * sp;
+          const ny = p.y + Math.sin(a) * sp;
+          const col = layer === "tormentas" ? "255,92,92" : windColor(hourly.wind * (0.6 + p.speed / 1.65));
+
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(nx, ny);
+          ctx.strokeStyle = `rgba(${col},${0.55 * dim})`;
+          ctx.lineWidth = 1.3;
+          ctx.stroke();
+
+          p.x = nx; p.y = ny; p.life -= 1;
+          if (p.life <= 0 || p.x < 0 || p.x > w2 || p.y < 0 || p.y > h2 || !isSea(p.x / w2, p.y / h2)) {
+            p.x = Math.random() * w2;
+            p.y = Math.random() * h2;
+            p.life = 60 + Math.random() * 90;
+          }
+        }
+      }
+
+      if (layer === "lluvia" || layer === "tormentas") {
+        const intensity = layer === "tormentas" ? 0.9 : Math.max(hourly.precipProb / 100, 0.08);
+        const nDrops = Math.floor(90 * intensity);
+        ctx.strokeStyle = "rgba(79,195,232,0.55)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < nDrops; i++) {
+          const rx = (i * 97 + t * 3.1) % w2;
+          const ry = (i * 53 + t * 6.3) % h2;
+          ctx.beginPath();
+          ctx.moveTo(rx, ry);
+          ctx.lineTo(rx - 5, ry + 11);
+          ctx.stroke();
+        }
+        const bandG = ctx.createRadialGradient(w2 * 0.25, h2 * 0.5, 10, w2 * 0.25, h2 * 0.5, w2 * 0.5);
+        bandG.addColorStop(0, `rgba(79,195,232,${0.28 * intensity})`);
+        bandG.addColorStop(1, "rgba(79,195,232,0)");
+        ctx.fillStyle = bandG;
+        ctx.fillRect(0, 0, w2, h2);
+      }
+
+      if (layer === "tormentas") drawStormCell(ctx, w2, h2, t);
+
+      if (!reducedMotion) rafRef.current = requestAnimationFrame(frame);
+    };
+
+    if (reducedMotion) frame(); else rafRef.current = requestAnimationFrame(frame);
+
+    return () => {
+      window.removeEventListener("resize", resize);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layer, selected, hour, forecast, status]);
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#05101c", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <style>{`
+        * { box-sizing: border-box; }
+        .ipad-app { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .mono { font-family: 'SFMono-Regular', Menlo, Consolas, monospace; }
+        .disp { font-family: -apple-system, sans-serif; }
+        .day-row { transition: background .18s ease, transform .18s ease; }
+        .day-row:hover { background: rgba(234,242,246,0.06); }
+        .day-row:active { transform: scale(0.99); }
+        .layer-tab { transition: all .18s ease; }
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .scrub::-webkit-slider-thumb {
+          -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+          background: #eaf2f6; box-shadow: 0 0 0 4px rgba(234,242,246,0.15); cursor: pointer; margin-top: -6px;
+        }
+        .scrub { -webkit-appearance: none; height: 4px; border-radius: 2px; background: rgba(234,242,246,0.18); }
+        .scrub::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
+        ::selection { background: rgba(255,178,74,0.35); }
+      `}</style>
+
+      <div className="ipad-app" style={{
+        width: "min(96vw, 1220px)", aspectRatio: "1194 / 834", background: "#050e18",
+        borderRadius: "38px", padding: "16px", boxShadow: "0 40px 90px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04)",
+      }}>
+        <div style={{
+          width: "100%", height: "100%", borderRadius: "26px", overflow: "hidden",
+          background: "linear-gradient(160deg,#0b1f33 0%,#0e2438 55%,#0a1b2e 100%)",
+          display: "flex", flexDirection: "column", position: "relative",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 26px 0", color: "#eaf2f6", fontSize: "13px", fontWeight: 600 }}>
+            <span className="mono">{clock || "--:--"}</span>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", opacity: 0.9 }}>
+              <Wifi size={15} />
+              <BatteryFull size={17} />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "10px 26px 14px", borderBottom: "1px solid rgba(234,242,246,0.08)" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#eaf2f6" }}>
+                <Waves size={18} color="#4fc3e8" />
+                <span style={{ fontSize: "20px", fontWeight: 700, letterSpacing: "0.2px" }}>Concepción</span>
+              </div>
+              <div className="mono" style={{ color: "rgba(169,198,217,0.75)", fontSize: "11.5px", marginTop: "3px" }}>
+                36.8265° S · 73.0503° O &nbsp;·&nbsp; Región del Biobío, Chile
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "14px", color: "#a9c6d9" }}>
+              <button onClick={loadForecast} title="Actualizar" style={{ background: "none", border: "none", color: "#a9c6d9", cursor: "pointer", display: "flex" }}>
+                <RefreshCw size={17} className={status === "loading" ? "spin" : ""} />
+              </button>
+              <Search size={18} />
+              <Settings2 size={18} />
+            </div>
+          </div>
+
+          {status === "error" ? (
+            <div style={{ margin: "12px 26px 0", padding: "9px 14px", borderRadius: "12px", background: "rgba(255,178,74,0.1)", border: "1px solid rgba(255,178,74,0.35)", display: "flex", alignItems: "center", gap: "10px", color: "#ffe3bd", fontSize: "12.5px" }}>
+              <TriangleAlert size={15} color="#ffb24a" />
+              <span>No se pudo conectar con Open-Meteo. Mostrando datos de referencia de temporada.</span>
+            </div>
+          ) : days[6]?.precip >= 70 ? (
+            <div style={{ margin: "12px 26px 0", padding: "9px 14px", borderRadius: "12px", background: "rgba(255,92,92,0.12)", border: "1px solid rgba(255,92,92,0.35)", display: "flex", alignItems: "center", gap: "10px", color: "#ffd7d7", fontSize: "12.5px" }}>
+              <TriangleAlert size={15} color="#ff5c5c" />
+              <span>Aviso: {days[6].label.toLowerCase()} {days[6].date}, ráfagas de hasta {days[6].gust || days[6].windMax} km/h y {Math.round(days[6].precipMm)} mm de lluvia.</span>
+            </div>
+          ) : null}
+
+          <div style={{ flex: 1, display: "flex", gap: "16px", padding: "14px 26px 8px", minHeight: 0 }}>
+            <div style={{ width: "300px", display: "flex", flexDirection: "column", gap: "14px", minHeight: 0 }}>
+              <div style={{
+                borderRadius: "18px", padding: "16px 18px", flexShrink: 0,
+                background: "linear-gradient(150deg, rgba(62,110,142,0.35), rgba(15,32,51,0.4))",
+                border: "1px solid rgba(234,242,246,0.08)",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div className="mono" style={{ color: "#a9c6d9", fontSize: "11px", textTransform: "uppercase", letterSpacing: "1px" }}>
+                      {day.label === "Hoy" ? "Ahora" : day.label}
+                    </div>
+                    <div className="disp" style={{ color: "#eaf2f6", fontSize: "52px", fontWeight: 600, lineHeight: 1 }}>
+                      {heroTemp}°
+                    </div>
+                    <div style={{ color: "#cfe0ea", fontSize: "13px", marginTop: "2px" }}>{day.cond}</div>
+                  </div>
+                  <DayIcon size={40} color="#ffb24a" strokeWidth={1.6} />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "14px" }}>
+                  {[
+                    { Icon: Wind, label: "Viento", val: `${day.windMax} km/h ${degToCompass(day.windDeg)}` },
+                    { Icon: Droplets, label: "Humedad", val: `${heroHum}%` },
+                    { Icon: CloudRain, label: "Prob. lluvia", val: `${day.precip}%` },
+                    { Icon: Sunrise, label: "Amanecer", val: day.sunrise },
+                  ].map(({ Icon, label, val }) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", gap: "7px", background: "rgba(5,15,26,0.35)", borderRadius: "10px", padding: "7px 9px" }}>
+                      <Icon size={14} color="#7fa8be" />
+                      <div>
+                        <div style={{ color: "#7fa8be", fontSize: "9.5px" }}>{label}</div>
+                        <div className="mono" style={{ color: "#eaf2f6", fontSize: "11.5px" }}>{val}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: "18px", background: "rgba(5,15,26,0.35)", border: "1px solid rgba(234,242,246,0.08)", overflow: "hidden", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                <div style={{ padding: "12px 14px 6px", color: "#a9c6d9", fontSize: "11px", textTransform: "uppercase", letterSpacing: "1px" }}>
+                  Próximos 7 días
+                </div>
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  {days.map((d, i) => {
+                    const { Icon } = codeToIcon(d.code);
+                    return (
+                      <button key={i} onClick={() => setSelected(i)} className="day-row" style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: "10px", padding: "9px 14px",
+                        background: i === selected ? "rgba(255,178,74,0.10)" : "transparent",
+                        border: "none", borderLeft: i === selected ? "3px solid #ffb24a" : "3px solid transparent",
+                        cursor: "pointer", textAlign: "left",
+                      }}>
+                        <span style={{ width: "56px", color: "#eaf2f6", fontSize: "12.5px", fontWeight: i === selected ? 700 : 500 }}>{d.label}</span>
+                        <Icon size={16} color="#a9c6d9" style={{ flexShrink: 0 }} />
+                        <span style={{ flex: 1, color: "#7fa8be", fontSize: "11px" }}>{d.cond}</span>
+                        <span className="mono" style={{ color: "#eaf2f6", fontSize: "12px" }}>{d.tMax}°</span>
+                        <span className="mono" style={{ color: "#5a7a8f", fontSize: "12px", width: "26px", textAlign: "right" }}>{d.tMin}°</span>
+                        <ChevronRight size={13} color="#3e6e8e" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, borderRadius: "18px", border: "1px solid rgba(234,242,246,0.08)", overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0, background: "#0a1b2e" }}>
+              <div style={{ display: "flex", gap: "6px", padding: "12px 16px", borderBottom: "1px solid rgba(234,242,246,0.08)", flexWrap: "wrap" }}>
+                {LAYERS.map(({ id, label, Icon }) => (
+                  <button key={id} onClick={() => setLayer(id)} className="layer-tab" style={{
+                    display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "999px", border: "1px solid",
+                    borderColor: layer === id ? "#ffb24a" : "rgba(234,242,246,0.12)",
+                    background: layer === id ? "rgba(255,178,74,0.14)" : "transparent",
+                    color: layer === id ? "#ffd9a8" : "#a9c6d9", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                  }}>
+                    <Icon size={13} />
+                    {label}
+                  </button>
+                ))}
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", color: "#7fa8be", fontSize: "11px" }}>
+                  <Compass size={13} />
+                  <span className="mono">{hourly.wind} km/h {degToCompass(hourly.windDeg)}</span>
+                </div>
+              </div>
+
+              <div ref={wrapRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
+                <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, display: "block" }} />
+
+                <div style={{ position: "absolute", top: "12px", right: "12px", background: "rgba(5,15,26,0.72)", backdropFilter: "blur(6px)", borderRadius: "12px", padding: "10px 12px", border: "1px solid rgba(234,242,246,0.1)" }}>
+                  <div style={{ color: "#a9c6d9", fontSize: "10px", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    {layer === "lluvia" ? "Prob. de lluvia" : layer === "temperatura" ? "Temperatura °C" : "Velocidad km/h"}
+                  </div>
+                  <div style={{ display: "flex", height: "6px", width: "150px", borderRadius: "3px", overflow: "hidden" }}>
+                    <div style={{ flex: 1, background: "#38a3d6" }} />
+                    <div style={{ flex: 1, background: "#4cc9c4" }} />
+                    <div style={{ flex: 1, background: "#ffb24a" }} />
+                    <div style={{ flex: 1, background: "#ff5c5c" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
+                    <span className="mono" style={{ color: "#5a7a8f", fontSize: "9px" }}>0</span>
+                    <span className="mono" style={{ color: "#5a7a8f", fontSize: "9px" }}>{layer === "temperatura" ? "18" : layer === "lluvia" ? "100%" : "60+"}</span>
+                  </div>
+                </div>
+
+                <div style={{ position: "absolute", bottom: "12px", left: "12px", color: "rgba(169,198,217,0.55)", fontSize: "10px", fontStyle: "italic" }}>
+                  Bahía de Concepción · mapa esquemático
+                </div>
+
+                {layer === "tormentas" && (
+                  <div style={{ position: "absolute", left: "10%", top: "38%", color: "#ffd7d7", fontSize: "11px", display: "flex", gap: "6px", alignItems: "center" }}>
+                    <CloudLightning size={14} color="#ff5c5c" />
+                    <span className="mono">celda activa</span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: "12px 18px 14px", borderTop: "1px solid rgba(234,242,246,0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                  <span style={{ color: "#7fa8be", fontSize: "11px" }}>
+                    {hourly.temp}° · {hourly.wind} km/h {degToCompass(hourly.windDeg)} · {Math.round(hourly.precipProb)}% lluvia
+                  </span>
+                  <span className="mono" style={{ color: "#eaf2f6", fontSize: "11px" }}>{String(hour).padStart(2, "0")}:00</span>
+                </div>
+                <input type="range" min={0} max={23} value={hour} onChange={(e) => setHour(Number(e.target.value))} className="scrub" style={{ width: "100%" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
+                  {[0, 6, 12, 18, 23].map((h) => (
+                    <span key={h} className="mono" style={{ color: "#5a7a8f", fontSize: "9.5px" }}>{String(h).padStart(2, "0")}h</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: "0 26px 12px", display: "flex", justifyContent: "space-between", color: "rgba(169,198,217,0.5)", fontSize: "10px" }}>
+            <span className="mono">
+              {status === "ok" ? `Datos: Open-Meteo.com · actualizado ${updatedAt?.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}` : status === "loading" ? "Cargando pronóstico…" : "Sin conexión · datos de referencia"}
+            </span>
+            <span>Capa de viento y lluvia: recreación visual estilo Windy</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>

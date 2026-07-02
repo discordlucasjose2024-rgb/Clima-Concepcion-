@@ -1,0 +1,17 @@
+{
+  "name": "Clima Concepción",
+  "short_name": "Clima Conce",
+  "description": "Pronóstico del tiempo de 7 días y mapa de viento/lluvia/tormentas para Concepción, Chile",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05101c",
+  "theme_color": "#0b1f33",
+  "orientation": "landscape",
+  "lang": "es-CL",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
