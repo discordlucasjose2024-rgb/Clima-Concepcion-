@@ -1,4 +1,4 @@
-const CACHE = "clima-conce-v3";
+const CACHE = "clima-conce-v5";
 const ASSETS = ["./manifest.json?v=3", "./icon-192.png?v=3", "./icon-512.png?v=3", "./apple-touch-icon.png?v=3"];
 
 self.addEventListener("install", (event) => {
@@ -16,8 +16,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Nunca cachear: datos de pronostico ni las tejas del mapa (OpenStreetMap)
+  // Nunca cachear: datos de pronostico ni las teselas del mapa
   if (url.hostname.includes("open-meteo.com")) return;
+  if (url.hostname.includes("cartocdn.com")) return;
   if (url.hostname.includes("tile.openstreetmap.org")) return;
   if (event.request.method !== "GET") return;
 

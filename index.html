@@ -86,10 +86,13 @@ const LAYERS = [
   { id: "temperatura", label: "Temperatura", Icon: Thermometer },
 ];
 
-// Centro del mapa real (Leaflet/OpenStreetMap) sobre la bahía de Concepción
-const MAP_CENTER = [-36.79, -73.05];
-const MAP_ZOOM = 11;
-const STORM_ORIGIN = { x: 0.14, y: 0.42 }; // punto sobre el Pacífico, al oeste, para la animación de tormenta
+// Encuadre real (Leaflet/OpenStreetMap): incluye la península de Talcahuano completa
+// y la isla Quiriquina al norte, además de Concepción y alrededores
+const MAP_BOUNDS = [
+  [-36.595, -73.205], // esquina noroeste: por sobre isla Quiriquina y punta de Talcahuano
+  [-36.875, -72.95],  // esquina sureste: Concepción / San Pedro de la Paz / Penco
+];
+const STORM_ORIGIN = { x: 0.09, y: 0.62 }; // punto sobre el Pacífico abierto, para la animación de tormenta
 
 function windColor(speed) {
   if (speed < 15) return "56,163,214";
@@ -154,9 +157,8 @@ function App() {
 
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current || typeof window.L === "undefined") return;
+    const bounds = window.L.latLngBounds(MAP_BOUNDS[0], MAP_BOUNDS[1]);
     const map = window.L.map(mapDivRef.current, {
-      center: MAP_CENTER,
-      zoom: MAP_ZOOM,
       zoomControl: false,
       dragging: false,
       scrollWheelZoom: false,
@@ -166,16 +168,26 @@ function App() {
       keyboard: false,
       attributionControl: true,
     });
-    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: "&copy; OpenStreetMap contributors",
+    window.L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      maxZoom: 20,
+      subdomains: "abcd",
+      detectRetina: true,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
     }).addTo(map);
-    window.L.circleMarker(MAP_CENTER, {
+    window.L.circleMarker([-36.6167, -73.135], {
+      radius: 4, color: "#eaf2f6", weight: 1.5, fillColor: "#4fc3e8", fillOpacity: 0.9,
+    }).addTo(map).bindTooltip("Isla Quiriquina", { permanent: false, direction: "top" });
+    window.L.circleMarker([-36.8265, -73.0503], {
       radius: 5, color: "#eaf2f6", weight: 2, fillColor: "#ffb24a", fillOpacity: 1,
     }).addTo(map).bindTooltip("Concepción", { permanent: false, direction: "top" });
+    map.fitBounds(bounds, { padding: [4, 4] });
     mapRef.current = map;
     setMapReady(true);
-    setTimeout(() => map.invalidateSize(), 200);
+    setTimeout(() => {
+      map.invalidateSize();
+      map.fitBounds(bounds, { padding: [4, 4] });
+    }, 250);
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
@@ -321,7 +333,7 @@ function App() {
 
       if (layer === "viento" || layer === "tormentas") {
         const parts = particlesRef.current;
-        const dim = layer === "tormentas" ? 0.55 : 1;
+        const dim = layer === "tormentas" ? 0.65 : 1;
         for (const p of parts) {
           const fy = p.y / h2;
           const curl = Math.sin(fy * 6 + t * 0.01) * 0.35;
@@ -329,14 +341,21 @@ function App() {
           const sp = p.speed * (1.4 + speedFactor * 2.2);
           const nx = p.x + Math.cos(a) * sp;
           const ny = p.y + Math.sin(a) * sp;
-          const col = layer === "tormentas" ? "255,92,92" : windColor(hourly.wind * (0.6 + p.speed / 1.65));
+          const col = layer === "tormentas" ? "255,64,64" : windColor(hourly.wind * (0.6 + p.speed / 1.65));
 
           ctx.beginPath();
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(nx, ny);
-          ctx.strokeStyle = `rgba(${col},${0.55 * dim})`;
-          ctx.lineWidth = 1.3;
+          ctx.strokeStyle = `rgba(${col},${0.9 * dim})`;
+          ctx.lineWidth = 2.4;
+          ctx.lineCap = "round";
           ctx.stroke();
+          // halo oscuro fino para que la línea resalte sobre mapas claros
+          ctx.strokeStyle = `rgba(5,15,26,${0.35 * dim})`;
+          ctx.lineWidth = 3.6;
+          ctx.globalCompositeOperation = "destination-over";
+          ctx.stroke();
+          ctx.globalCompositeOperation = "source-over";
 
           p.x = nx; p.y = ny; p.life -= 1;
           if (p.life <= 0 || p.x < 0 || p.x > w2 || p.y < 0 || p.y > h2) {
@@ -349,30 +368,31 @@ function App() {
 
       if (layer === "lluvia" || layer === "tormentas") {
         const intensity = layer === "tormentas" ? 0.9 : Math.max(hourly.precipProb / 100, 0.08);
-        const nDrops = Math.floor(90 * intensity);
-        ctx.strokeStyle = "rgba(79,195,232,0.55)";
-        ctx.lineWidth = 1;
+        const nDrops = Math.floor(110 * intensity);
+        ctx.strokeStyle = "rgba(41,140,201,0.85)";
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = "round";
         for (let i = 0; i < nDrops; i++) {
-          const rx = (i * 97 + t * 3.1) % w2;
-          const ry = (i * 53 + t * 6.3) % h2;
+          const rx = (i * 97 + t * 3.4) % w2;
+          const ry = (i * 53 + t * 7.2) % h2;
           ctx.beginPath();
           ctx.moveTo(rx, ry);
-          ctx.lineTo(rx - 5, ry + 11);
+          ctx.lineTo(rx - 6, ry + 13);
           ctx.stroke();
         }
         const bandG = ctx.createRadialGradient(w2 * 0.25, h2 * 0.5, 10, w2 * 0.25, h2 * 0.5, w2 * 0.5);
-        bandG.addColorStop(0, `rgba(79,195,232,${0.28 * intensity})`);
-        bandG.addColorStop(1, "rgba(79,195,232,0)");
+        bandG.addColorStop(0, `rgba(41,140,201,${0.22 * intensity})`);
+        bandG.addColorStop(1, "rgba(41,140,201,0)");
         ctx.fillStyle = bandG;
         ctx.fillRect(0, 0, w2, h2);
       }
 
       if (layer === "tormentas") drawStormCell(ctx, w2, h2, t);
 
-      if (!reducedMotion) rafRef.current = requestAnimationFrame(frame);
+      rafRef.current = requestAnimationFrame(frame);
     };
 
-    if (reducedMotion) frame(); else rafRef.current = requestAnimationFrame(frame);
+    rafRef.current = requestAnimationFrame(frame);
 
     return () => {
       window.removeEventListener("resize", resize);
