@@ -79,16 +79,30 @@ const LAYERS = [
 ];
 
 const LAND_PTS = [
-  [0.44, 0.0], [0.52, 0.06], [0.47, 0.13], [0.33, 0.15], [0.30, 0.19],
-  [0.40, 0.23], [0.37, 0.30], [0.33, 0.36], [0.41, 0.40], [0.38, 0.49],
-  [0.44, 0.56], [0.41, 0.63], [0.50, 0.70], [0.47, 0.80], [0.55, 0.88],
-  [0.51, 1.0], [1.0, 1.0], [1.0, 0.0],
+  [0.44, 0.00], [0.49, 0.02], [0.53, 0.05], [0.50, 0.08], [0.47, 0.11], [0.44, 0.12],
+  [0.40, 0.14], [0.35, 0.145], [0.315, 0.16], [0.30, 0.185], [0.32, 0.205], [0.365, 0.215],
+  [0.395, 0.225], [0.38, 0.25], [0.355, 0.27], [0.335, 0.29], [0.345, 0.315], [0.375, 0.33],
+  [0.395, 0.35], [0.38, 0.375], [0.36, 0.395], [0.375, 0.42], [0.41, 0.435], [0.43, 0.455],
+  [0.415, 0.48], [0.39, 0.5], [0.375, 0.52], [0.395, 0.545], [0.43, 0.555], [0.455, 0.57],
+  [0.44, 0.595], [0.415, 0.615], [0.43, 0.64], [0.465, 0.65], [0.49, 0.665], [0.475, 0.69],
+  [0.45, 0.71], [0.47, 0.735], [0.505, 0.745], [0.53, 0.765], [0.515, 0.79], [0.49, 0.81],
+  [0.51, 0.835], [0.545, 0.85], [0.565, 0.875], [0.55, 0.9], [0.565, 0.925], [0.60, 0.94],
+  [0.615, 0.965], [0.60, 1.0],
+  [1.0, 1.0], [1.0, 0.0],
 ];
 const ISLAND = { cx: 0.255, cy: 0.10, rx: 0.028, ry: 0.045, rot: -0.5 };
 const STORM_ORIGIN = { x: 0.17, y: 0.44 };
-const CITY_PT = { x: 0.585, y: 0.535, label: "Concepción" };
+const CITY_PT = { x: 0.60, y: 0.50, label: "Concepción" };
 const TALCA_PT = { x: 0.35, y: 0.165, label: "Talcahuano" };
 const RIVER_LABEL_PT = { x: 0.40, y: 0.60, label: "Río Biobío" };
+const SAN_VICENTE_PT = { x: 0.53, y: 0.80, label: "San Vicente" };
+const HUALPEN_PT = { x: 0.50, y: 0.70, label: "Hualpén" };
+const PENCO_PT = { x: 0.415, y: 0.335, label: "Penco" };
+const ANDALIEN_PT = { x: 0.50, y: 0.315, label: "Río Andalién" };
+const CONTOUR_ARCS = [
+  { cx: 0.78, cy: 0.35, r: 0.16 }, { cx: 0.78, cy: 0.35, r: 0.24 }, { cx: 0.78, cy: 0.35, r: 0.32 },
+  { cx: 0.85, cy: 0.75, r: 0.14 }, { cx: 0.85, cy: 0.75, r: 0.22 },
+];
 
 function windColor(speed) {
   if (speed < 15) return "56,163,214";
@@ -239,6 +253,22 @@ function App() {
   };
 
   const drawLand = (ctx, w, h) => {
+    // graticula sutil (referencia cartográfica)
+    ctx.strokeStyle = "rgba(169,198,217,0.07)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo((i / 8) * w, 0);
+      ctx.lineTo((i / 8) * w, h);
+      ctx.stroke();
+    }
+    for (let i = 1; i < 6; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, (i / 6) * h);
+      ctx.lineTo(w, (i / 6) * h);
+      ctx.stroke();
+    }
+
     ctx.beginPath();
     LAND_PTS.forEach(([px, py], i) => {
       const x = px * w, y = py * h;
@@ -250,9 +280,18 @@ function App() {
     g.addColorStop(1, "#0f2033");
     ctx.fillStyle = g;
     ctx.fill();
-    ctx.strokeStyle = "rgba(169,198,217,0.35)";
-    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = "rgba(169,198,217,0.4)";
+    ctx.lineWidth = 1.6;
     ctx.stroke();
+
+    // curvas de nivel (relieve esquemático de la cordillera de la costa)
+    CONTOUR_ARCS.forEach(({ cx, cy, r }) => {
+      ctx.beginPath();
+      ctx.arc(cx * w, cy * h, r * w, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(169,198,217,0.14)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
 
     ctx.save();
     ctx.translate(ISLAND.cx * w, ISLAND.cy * h);
@@ -265,23 +304,46 @@ function App() {
     ctx.stroke();
     ctx.restore();
 
-    const dot = (p, label) => {
+    const dot = (p, label, size = 3, weight = "500") => {
       const x = p.x * w, y = p.y * h;
       ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fillStyle = "#eaf2f6";
       ctx.fill();
-      ctx.font = "500 11px monospace";
+      ctx.font = `${weight} 11px monospace`;
       ctx.fillStyle = "rgba(234,242,246,0.85)";
       ctx.textAlign = "left";
       ctx.fillText(label, x + 8, y + 4);
     };
-    dot(CITY_PT, CITY_PT.label);
+    dot(CITY_PT, CITY_PT.label, 4, "700");
     dot(TALCA_PT, TALCA_PT.label);
+    dot(SAN_VICENTE_PT, SAN_VICENTE_PT.label);
+    dot(HUALPEN_PT, HUALPEN_PT.label);
+    dot(PENCO_PT, PENCO_PT.label);
+
     ctx.font = "italic 10px monospace";
     ctx.fillStyle = "rgba(234,242,246,0.55)";
     ctx.textAlign = "left";
     ctx.fillText(RIVER_LABEL_PT.label, RIVER_LABEL_PT.x * w, RIVER_LABEL_PT.y * h);
+    ctx.fillText(ANDALIEN_PT.label, ANDALIEN_PT.x * w, ANDALIEN_PT.y * h);
+
+    // rosa de los vientos
+    const rx = w - 46, ry = 46;
+    ctx.save();
+    ctx.translate(rx, ry);
+    ctx.strokeStyle = "rgba(234,242,246,0.35)";
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -22); ctx.lineTo(0, 22);
+    ctx.moveTo(-22, 0); ctx.lineTo(22, 0);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(234,242,246,0.6)";
+    ctx.font = "700 9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("N", 0, -27);
+    ctx.restore();
   };
 
   const drawStormCell = (ctx, w, h, t) => {
@@ -379,7 +441,7 @@ function App() {
           ctx.stroke();
 
           p.x = nx; p.y = ny; p.life -= 1;
-          if (p.life <= 0 || p.x < 0 || p.x > w2 || p.y < 0 || p.y > h2 || !isSea(p.x / w2, p.y / h2)) {
+          if (p.life <= 0 || p.x < 0 || p.x > w2 || p.y < 0 || p.y > h2) {
             p.x = Math.random() * w2;
             p.y = Math.random() * h2;
             p.life = 60 + Math.random() * 90;
@@ -506,7 +568,11 @@ function App() {
                     <div className="disp" style={{ color: "#eaf2f6", fontSize: "52px", fontWeight: 600, lineHeight: 1 }}>
                       {heroTemp}°
                     </div>
-                    <div style={{ color: "#cfe0ea", fontSize: "13px", marginTop: "2px" }}>{day.cond}</div>
+                    <div style={{ display: "flex", gap: "10px", marginTop: "2px" }}>
+                      <span className="mono" style={{ color: "#ff8a3d", fontSize: "12.5px" }}>Máx {day.tMax}°</span>
+                      <span className="mono" style={{ color: "#7fa8be", fontSize: "12.5px" }}>Mín {day.tMin}°</span>
+                    </div>
+                    <div style={{ color: "#cfe0ea", fontSize: "13px", marginTop: "4px" }}>{day.cond}</div>
                   </div>
                   <DayIcon size={40} color="#ffb24a" strokeWidth={1.6} />
                 </div>
