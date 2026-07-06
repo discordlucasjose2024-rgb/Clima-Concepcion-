@@ -1,4 +1,4 @@
-const CACHE = "clima-conce-v5";
+const CACHE = "clima-conce-v6";
 const ASSETS = ["./manifest.json?v=3", "./icon-192.png?v=3", "./icon-512.png?v=3", "./apple-touch-icon.png?v=3"];
 
 self.addEventListener("install", (event) => {

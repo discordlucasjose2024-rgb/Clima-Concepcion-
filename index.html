@@ -313,8 +313,13 @@ function App() {
 
     let t = 0;
     const frame = () => {
-      t += 1;
-      const w2 = wrap.clientWidth, h2 = wrap.clientHeight;
+      try {
+        t += 1;
+        const w2 = wrap.clientWidth, h2 = wrap.clientHeight;
+        if (w2 < 2 || h2 < 2) {
+          rafRef.current = requestAnimationFrame(frame);
+          return;
+        }
 
       // desvanece el frame anterior sin oscurecer el mapa (deja transparencia)
       ctx.globalCompositeOperation = "destination-out";
@@ -388,6 +393,9 @@ function App() {
       }
 
       if (layer === "tormentas") drawStormCell(ctx, w2, h2, t);
+      } catch (err) {
+        console.error("Error en la animación del mapa:", err);
+      }
 
       rafRef.current = requestAnimationFrame(frame);
     };
