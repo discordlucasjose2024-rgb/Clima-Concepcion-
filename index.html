@@ -6,13 +6,16 @@
 <title>Clima Concepción</title>
 <meta name="description" content="Pronóstico del tiempo de 7 días y mapa de viento, lluvia y tormentas para Concepción, Chile." />
 
-<link rel="manifest" href="manifest.json" />
+<link rel="manifest" href="manifest.json?v=3" />
 <meta name="theme-color" content="#0b1f33" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Clima Conce" />
-<link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=3" />
+<link rel="icon" href="icon-192.png?v=3" />
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script type="importmap">
 {
@@ -31,6 +34,11 @@
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     background: #05101c; color: #a9c6d9; font-family: -apple-system, sans-serif; font-size: 14px;
   }
+  .leaflet-control-attribution {
+    background: rgba(5,15,26,0.65) !important; color: #7fa8be !important; font-size: 9px !important;
+  }
+  .leaflet-control-attribution a { color: #a9c6d9 !important; }
+  .leaflet-top, .leaflet-bottom { z-index: 2 !important; }
 </style>
 </head>
 <body>
@@ -78,31 +86,10 @@ const LAYERS = [
   { id: "temperatura", label: "Temperatura", Icon: Thermometer },
 ];
 
-const LAND_PTS = [
-  [0.44, 0.00], [0.49, 0.02], [0.53, 0.05], [0.50, 0.08], [0.47, 0.11], [0.44, 0.12],
-  [0.40, 0.14], [0.35, 0.145], [0.315, 0.16], [0.30, 0.185], [0.32, 0.205], [0.365, 0.215],
-  [0.395, 0.225], [0.38, 0.25], [0.355, 0.27], [0.335, 0.29], [0.345, 0.315], [0.375, 0.33],
-  [0.395, 0.35], [0.38, 0.375], [0.36, 0.395], [0.375, 0.42], [0.41, 0.435], [0.43, 0.455],
-  [0.415, 0.48], [0.39, 0.5], [0.375, 0.52], [0.395, 0.545], [0.43, 0.555], [0.455, 0.57],
-  [0.44, 0.595], [0.415, 0.615], [0.43, 0.64], [0.465, 0.65], [0.49, 0.665], [0.475, 0.69],
-  [0.45, 0.71], [0.47, 0.735], [0.505, 0.745], [0.53, 0.765], [0.515, 0.79], [0.49, 0.81],
-  [0.51, 0.835], [0.545, 0.85], [0.565, 0.875], [0.55, 0.9], [0.565, 0.925], [0.60, 0.94],
-  [0.615, 0.965], [0.60, 1.0],
-  [1.0, 1.0], [1.0, 0.0],
-];
-const ISLAND = { cx: 0.255, cy: 0.10, rx: 0.028, ry: 0.045, rot: -0.5 };
-const STORM_ORIGIN = { x: 0.17, y: 0.44 };
-const CITY_PT = { x: 0.60, y: 0.50, label: "Concepción" };
-const TALCA_PT = { x: 0.35, y: 0.165, label: "Talcahuano" };
-const RIVER_LABEL_PT = { x: 0.40, y: 0.60, label: "Río Biobío" };
-const SAN_VICENTE_PT = { x: 0.53, y: 0.80, label: "San Vicente" };
-const HUALPEN_PT = { x: 0.50, y: 0.70, label: "Hualpén" };
-const PENCO_PT = { x: 0.415, y: 0.335, label: "Penco" };
-const ANDALIEN_PT = { x: 0.50, y: 0.315, label: "Río Andalién" };
-const CONTOUR_ARCS = [
-  { cx: 0.78, cy: 0.35, r: 0.16 }, { cx: 0.78, cy: 0.35, r: 0.24 }, { cx: 0.78, cy: 0.35, r: 0.32 },
-  { cx: 0.85, cy: 0.75, r: 0.14 }, { cx: 0.85, cy: 0.75, r: 0.22 },
-];
+// Centro del mapa real (Leaflet/OpenStreetMap) sobre la bahía de Concepción
+const MAP_CENTER = [-36.79, -73.05];
+const MAP_ZOOM = 11;
+const STORM_ORIGIN = { x: 0.14, y: 0.42 }; // punto sobre el Pacífico, al oeste, para la animación de tormenta
 
 function windColor(speed) {
   if (speed < 15) return "56,163,214";
@@ -146,8 +133,11 @@ function App() {
 
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
+  const mapDivRef = useRef(null);
+  const mapRef = useRef(null);
   const particlesRef = useRef([]);
   const rafRef = useRef(null);
+  const [mapReady, setMapReady] = useState(false);
 
   const reducedMotion = typeof window !== "undefined" &&
     window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -160,6 +150,33 @@ function App() {
     tick();
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!mapDivRef.current || mapRef.current || typeof window.L === "undefined") return;
+    const map = window.L.map(mapDivRef.current, {
+      center: MAP_CENTER,
+      zoom: MAP_ZOOM,
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      attributionControl: true,
+    });
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+    window.L.circleMarker(MAP_CENTER, {
+      radius: 5, color: "#eaf2f6", weight: 2, fillColor: "#ffb24a", fillOpacity: 1,
+    }).addTo(map).bindTooltip("Concepción", { permanent: false, direction: "top" });
+    mapRef.current = map;
+    setMapReady(true);
+    setTimeout(() => map.invalidateSize(), 200);
+    return () => { map.remove(); mapRef.current = null; };
   }, []);
 
   const loadForecast = useCallback(async () => {
@@ -240,112 +257,6 @@ function App() {
     particlesRef.current = arr;
   }, []);
 
-  const isSea = (fx, fy) => {
-    let inside = false;
-    const pts = LAND_PTS;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const xi = pts[i][0], yi = pts[i][1];
-      const xj = pts[j][0], yj = pts[j][1];
-      const intersect = yi > fy !== yj > fy && fx < ((xj - xi) * (fy - yi)) / (yj - yi) + xi;
-      if (intersect) inside = !inside;
-    }
-    return !inside;
-  };
-
-  const drawLand = (ctx, w, h) => {
-    // graticula sutil (referencia cartográfica)
-    ctx.strokeStyle = "rgba(169,198,217,0.07)";
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo((i / 8) * w, 0);
-      ctx.lineTo((i / 8) * w, h);
-      ctx.stroke();
-    }
-    for (let i = 1; i < 6; i++) {
-      ctx.beginPath();
-      ctx.moveTo(0, (i / 6) * h);
-      ctx.lineTo(w, (i / 6) * h);
-      ctx.stroke();
-    }
-
-    ctx.beginPath();
-    LAND_PTS.forEach(([px, py], i) => {
-      const x = px * w, y = py * h;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.closePath();
-    const g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, "#1c3346");
-    g.addColorStop(1, "#0f2033");
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.strokeStyle = "rgba(169,198,217,0.4)";
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-
-    // curvas de nivel (relieve esquemático de la cordillera de la costa)
-    CONTOUR_ARCS.forEach(({ cx, cy, r }) => {
-      ctx.beginPath();
-      ctx.arc(cx * w, cy * h, r * w, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(169,198,217,0.14)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-
-    ctx.save();
-    ctx.translate(ISLAND.cx * w, ISLAND.cy * h);
-    ctx.rotate(ISLAND.rot);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, ISLAND.rx * w, ISLAND.ry * h, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#1c3346";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(169,198,217,0.35)";
-    ctx.stroke();
-    ctx.restore();
-
-    const dot = (p, label, size = 3, weight = "500") => {
-      const x = p.x * w, y = p.y * h;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fillStyle = "#eaf2f6";
-      ctx.fill();
-      ctx.font = `${weight} 11px monospace`;
-      ctx.fillStyle = "rgba(234,242,246,0.85)";
-      ctx.textAlign = "left";
-      ctx.fillText(label, x + 8, y + 4);
-    };
-    dot(CITY_PT, CITY_PT.label, 4, "700");
-    dot(TALCA_PT, TALCA_PT.label);
-    dot(SAN_VICENTE_PT, SAN_VICENTE_PT.label);
-    dot(HUALPEN_PT, HUALPEN_PT.label);
-    dot(PENCO_PT, PENCO_PT.label);
-
-    ctx.font = "italic 10px monospace";
-    ctx.fillStyle = "rgba(234,242,246,0.55)";
-    ctx.textAlign = "left";
-    ctx.fillText(RIVER_LABEL_PT.label, RIVER_LABEL_PT.x * w, RIVER_LABEL_PT.y * h);
-    ctx.fillText(ANDALIEN_PT.label, ANDALIEN_PT.x * w, ANDALIEN_PT.y * h);
-
-    // rosa de los vientos
-    const rx = w - 46, ry = 46;
-    ctx.save();
-    ctx.translate(rx, ry);
-    ctx.strokeStyle = "rgba(234,242,246,0.35)";
-    ctx.beginPath();
-    ctx.arc(0, 0, 22, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, -22); ctx.lineTo(0, 22);
-    ctx.moveTo(-22, 0); ctx.lineTo(22, 0);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(234,242,246,0.6)";
-    ctx.font = "700 9px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("N", 0, -27);
-    ctx.restore();
-  };
-
   const drawStormCell = (ctx, w, h, t) => {
     const x = STORM_ORIGIN.x * w, y = STORM_ORIGIN.y * h;
     for (let i = 0; i < 3; i++) {
@@ -378,8 +289,7 @@ function App() {
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = "#0a1b2e";
-      ctx.fillRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
       initParticles(w, h, 190);
     };
     resize();
@@ -394,32 +304,20 @@ function App() {
       t += 1;
       const w2 = wrap.clientWidth, h2 = wrap.clientHeight;
 
-      ctx.fillStyle = "rgba(8,20,34,0.14)";
+      // desvanece el frame anterior sin oscurecer el mapa (deja transparencia)
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0,0,0,0.14)";
       ctx.fillRect(0, 0, w2, h2);
-
-      const seaG = ctx.createLinearGradient(0, 0, w2, h2);
-      seaG.addColorStop(0, "rgba(20,50,76,0.25)");
-      seaG.addColorStop(1, "rgba(9,24,40,0.10)");
-      ctx.fillStyle = seaG;
-      ctx.fillRect(0, 0, w2, h2);
+      ctx.globalCompositeOperation = "source-over";
 
       if (layer === "temperatura") {
         const tg = ctx.createLinearGradient(0, 0, w2, 0);
-        tg.addColorStop(0, "rgba(76,201,196,0.35)");
-        tg.addColorStop(0.5, "rgba(255,178,74,0.22)");
-        tg.addColorStop(1, "rgba(255,92,92,0.18)");
+        tg.addColorStop(0, "rgba(76,201,196,0.30)");
+        tg.addColorStop(0.5, "rgba(255,178,74,0.20)");
+        tg.addColorStop(1, "rgba(255,92,92,0.16)");
         ctx.fillStyle = tg;
         ctx.fillRect(0, 0, w2, h2);
-        ctx.strokeStyle = "rgba(234,242,246,0.18)";
-        for (let i = 1; i < 6; i++) {
-          ctx.beginPath();
-          ctx.moveTo((i / 6) * w2, 0);
-          ctx.lineTo((i / 6) * w2, h2);
-          ctx.stroke();
-        }
       }
-
-      drawLand(ctx, w2, h2);
 
       if (layer === "viento" || layer === "tormentas") {
         const parts = particlesRef.current;
@@ -641,10 +539,11 @@ function App() {
                 </div>
               </div>
 
-              <div ref={wrapRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
-                <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, display: "block" }} />
+              <div ref={wrapRef} style={{ flex: 1, position: "relative", minHeight: 0, background: "#0a1b2e" }}>
+                <div ref={mapDivRef} style={{ position: "absolute", inset: 0 }} />
+                <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, display: "block", pointerEvents: "none", zIndex: 1 }} />
 
-                <div style={{ position: "absolute", top: "12px", right: "12px", background: "rgba(5,15,26,0.72)", backdropFilter: "blur(6px)", borderRadius: "12px", padding: "10px 12px", border: "1px solid rgba(234,242,246,0.1)" }}>
+                <div style={{ position: "absolute", top: "12px", right: "12px", zIndex: 2, background: "rgba(5,15,26,0.72)", backdropFilter: "blur(6px)", borderRadius: "12px", padding: "10px 12px", border: "1px solid rgba(234,242,246,0.1)" }}>
                   <div style={{ color: "#a9c6d9", fontSize: "10px", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                     {layer === "lluvia" ? "Prob. de lluvia" : layer === "temperatura" ? "Temperatura °C" : "Velocidad km/h"}
                   </div>
@@ -660,12 +559,8 @@ function App() {
                   </div>
                 </div>
 
-                <div style={{ position: "absolute", bottom: "12px", left: "12px", color: "rgba(169,198,217,0.55)", fontSize: "10px", fontStyle: "italic" }}>
-                  Bahía de Concepción · mapa esquemático
-                </div>
-
                 {layer === "tormentas" && (
-                  <div style={{ position: "absolute", left: "10%", top: "38%", color: "#ffd7d7", fontSize: "11px", display: "flex", gap: "6px", alignItems: "center" }}>
+                  <div style={{ position: "absolute", left: "10%", top: "38%", zIndex: 2, color: "#ffd7d7", fontSize: "11px", display: "flex", gap: "6px", alignItems: "center" }}>
                     <CloudLightning size={14} color="#ff5c5c" />
                     <span className="mono">celda activa</span>
                   </div>

@@ -1,5 +1,5 @@
-const CACHE = "clima-conce-v2";
-const ASSETS = ["./manifest.json", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const CACHE = "clima-conce-v3";
+const ASSETS = ["./manifest.json?v=3", "./icon-192.png?v=3", "./icon-512.png?v=3", "./apple-touch-icon.png?v=3"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
@@ -16,8 +16,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Los datos de pronóstico siempre van a la red (nunca se cachean)
+  // Nunca cachear: datos de pronostico ni las tejas del mapa (OpenStreetMap)
   if (url.hostname.includes("open-meteo.com")) return;
+  if (url.hostname.includes("tile.openstreetmap.org")) return;
   if (event.request.method !== "GET") return;
 
   const isAppShell =
@@ -40,7 +41,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Iconos y manifest: copia guardada primero, se actualiza en segundo plano.
+  // Iconos, manifest y librerias: copia guardada primero, se actualiza en segundo plano.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request)
